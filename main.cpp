@@ -44,17 +44,26 @@ bool execute_instruction(uint32_t* regs, uint8_t* mem, uint32_t* pc) {
 
 }
 
-int main()
-{
+int main(){
+
     printf("Initializing RV32I simulator by Creed Truman...\n");
     uint32_t regs[32] = {0}; // 32 registers initialized to 0
     uint8_t mem[MEM_SIZE] = {0}; // 4KB of memory initialized to 0
     uint32_t pc = 0; // Program counter initialized to 0
 
+    FILE* testing_binary = fopen("rv_test.bin", "rb");
+    if (testing_binary == NULL) {
+        printf("Error: Could not open rv_test.bin!\n");
+        return 1; // Exit the simulator if the file fails to load
+    }
+    size_t bytes_read = fread(mem, sizeof(uint8_t), MEM_SIZE, testing_binary);
+    printf("Successfully loaded %zu bytes into memory.\n", bytes_read);
+
     bool success = true;
     do{
         success = execute_instruction(regs, mem, &pc);
     }while(success);
+
     printf("Exiting RV32I simulator...\n");
     return 0;
 }
