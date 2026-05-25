@@ -6,14 +6,7 @@ constexpr uint32_t MEM_SIZE = 4096; // 4KB of memory
 bool execute_instruction(uint32_t* regs, uint8_t* mem, uint32_t* pc) {
     uint32_t instruction = *((uint32_t*)(mem + *pc)); // Fetch instruction (4 bytes)
     printf("Fetched instruction: 0x%08X\n", instruction);
-
-    //Fix these and change them to shift first, then mask (much easier!)
-    /*
-    uint8_t opcode = (instruction & 0x0000007F) >> 0 ;//Extract opcode (bits 0-6)
-    uint8_t funct7 = (instruction & 0xFE000000) >> 27;//Extract funct7 (bits 25-31 R-type only)
-    uint8_t funct3 = (instruction & 0x00007000) >> 12;//Extract funct3 (bits 12-14)
     
-    printf("Decoded opcode: 0x%02X ", opcode);*/
     uint8_t opcode = (instruction >> 0 ) & 0x0000007F;//Extract bits 0-6
     uint8_t funct7 = (instruction >> 25) & 0x0000007F; //Extract bits 25-31
     uint8_t funct3 = (instruction >> 12) & 0x00000007; //Extract bits 12-14
@@ -26,8 +19,9 @@ bool execute_instruction(uint32_t* regs, uint8_t* mem, uint32_t* pc) {
     printf("rs1   : 0x%02X, val: %d\n", rs1   , regs[rs1]);
     printf("rs2   : 0x%02X, val: %d\n", rs2   , regs[rs2]);
     printf("rd    : 0x%02X, val: %d\n", rd    , regs[rd ]);
+
     switch(opcode){
-        case(0x33):{ // R-type
+        case(0x33):{ // R-type ALU math
             printf("R-type instruction\n");
                  if(funct3 == 0x00 && funct7 == 0x00) regs[rd] = regs[rs1] + regs[rs2];
             else if(funct3 == 0x00 && funct7 == 0x20) regs[rd] = regs[rs1] - regs[rs2];
@@ -42,7 +36,7 @@ bool execute_instruction(uint32_t* regs, uint8_t* mem, uint32_t* pc) {
             else printf("Undefined R-Type Instructions!!!\n\n");
             break;
         }
-        case(0x13):{ // I-type
+        case(0x13):{ // I-type ALU math
             printf("I-type instruction\n");
                 int32_t seimm = ((int32_t)instruction) >> 20;
                 uint32_t uimm  = seimm;
@@ -58,12 +52,51 @@ bool execute_instruction(uint32_t* regs, uint8_t* mem, uint32_t* pc) {
             else printf("Undefined I-Type Instructions!!!\n\n");
             break;
         }
-        default:
+        case(0x03):{ // I-type loads
+            uint32_t address = regs[rs1] + ((int32_t)instruction >> 20);
+            uint8_t loadSize = 1 << (funct3 & 0x03);;
+            if(address + loadSize - 1 >= MEM_SIZE){
+                printf("ERROR! address exceeds memory size. ");
+                return 0;
+            }
+            switch(funct3){
+                case(0x00):{
+                    regs[rd] = (int8_t)mem[address];
+                    break;
+                }
+                case(0x01):{
+                    regs[rd] = (int16_t)((mem[address]) | ((uint16_t)mem[address + 1] << 8));
+                    break;
+                }
+                case(0x02):{
+                    regs[rd] = (mem[address]) | ((uint16_t)mem[address + 1] << 8) | ((uint32_t)mem[address + 2] << 16) | ((uint32_t)mem[address + 3] << 24);
+                    break;
+                }
+                case(0x04):{
+                    regs[rd] = mem[address];
+                    break;
+                }
+                case(0x05):{
+                    regs[rd] = (mem[address]) | ((uint16_t)mem[address + 1] << 8);
+                    break;
+                }
+                default:{
+                    printf("ERROR! Undefined load instruction (funct3 = %02X)", funct3);
+                    break;
+                }
+           
+            }
+         break;
+        }
+        default:{
             printf("Unknown instruction opcode!!!");
             return false; // Invalid instruction
+        }
     }
+    regs[0] = 0;
     printf("New rd value: %d\n\n", regs[rd]);
     *pc += 4;
+    //Technically buggy on multi-byte fetches, but OK for now.
     if(*pc >= MEM_SIZE){
         printf("pc (0x%08X) has exceeded memsize (0x%08X)!", *pc, MEM_SIZE);
         return false;
@@ -78,7 +111,7 @@ int main(){
     uint32_t regs[32] = {0}; // 32 registers initialized to 0
     uint8_t mem[MEM_SIZE] = {0}; // 4KB of memory initialized to 0
     uint32_t pc = 0; // Program counter initialized to 0
-    regs[1] = 16;//For arithmetic testing until I have immediate or memory loading commands
+    regs[1] = 16;
     regs[2] = 2;
     FILE* testing_binary = fopen("rv_test.bin", "rb");
     if (testing_binary == NULL) {
