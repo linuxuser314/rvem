@@ -23,7 +23,6 @@ constexpr uint32_t MEM_SIZE = 4096; // 4KB of memory
 constexpr uint32_t PC_START = 0;
 constexpr uint32_t BIN_IMPORT_ADDR = PC_START;
 
-
 constexpr uint8_t OPCODE_R_ALU = 0x33;
 constexpr uint8_t OPCODE_I_ALU = 0x13;
 constexpr uint8_t OPCODE_I_LOAD   = 0x03;
@@ -34,6 +33,15 @@ constexpr uint8_t OPCODE_U_AUIPC  = 0x17;
 constexpr uint8_t OPCODE_I_JALR   = 0x67;
 constexpr uint8_t OPCODE_J_JAL    = 0x6F;
 
+enum class InstructionType {
+    R_TYPE,
+    I_TYPE,
+    S_TYPE,
+    B_TYPE,
+    U_TYPE,
+    J_TYPE
+};
+
 struct instruction{
     uint8_t opcode;
     uint8_t funct7;
@@ -43,6 +51,17 @@ struct instruction{
     uint8_t rd;
     int32_t imm;
 };
+
+int32_t signExtendImmediate(uint32_t value, uint8_t MSB){
+    //The idea here is that if the most significant bit is 1 then the immediate is negative.
+    //Then we have to make everything below the MSB into 1s.
+    //To do that, we shift 1 over MSB times and subtract 1 to create 00011111....
+    //Then we negate that and OR it to mask the first bits as 1s.
+    if(value & (1 << MSB)){
+        return value | ~((1 << (MSB + 1))-1);
+    }
+    return value;
+}
 
 struct Machine {
     uint32_t regs[32] = {0};
@@ -261,8 +280,26 @@ struct Machine {
         decoded.rd     = (encoded >> 7 ) & 0x0000001F; //Extract bits 7-11
 
         decoded.imm = 0;
-        switch(decoded.opcode)
-
+        switch(decoded.opcode){
+            case(OPCODE_R_ALU): break;
+            case(OPCODE_I_ALU):
+            case(OPCODE_I_LOAD):
+            case(OPCODE_I_JALR):
+                decoded.imm = ((int32_t)encoded) >> 20;
+                break;
+            case(OPCODE_S_STORE):
+                break;
+            case(OPCODE_B_BRANCH):
+                break;
+            case(OPCODE_J_JAL):
+                break;
+            case(OPCODE_U_LUI):
+            case(OPCODE_U_AUIPC):
+                break;
+            default:
+                dumpProcessorState("Undefined opcode encountered during immediate decoding");
+                break;
+        }
         return decoded;
     };
     void dumpProcessorState(const std::string& reason){
