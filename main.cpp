@@ -1,10 +1,17 @@
 #include <stdio.h>
 #include <stdint.h>
+#include <stdlib.h>
 
 constexpr uint32_t MEM_SIZE = 4096; // 4KB of memory
-constexpr uint32_t MEMORY_MAPPED_OUTPUT = 4095;
-bool execute_instruction(uint32_t* regs, uint8_t* mem, uint32_t* pc) {
-    uint32_t instruction = *((uint32_t*)(mem + *pc)); // Fetch instruction (4 bytes)
+constexpr uint32_t PC_START = 0;
+constexpr uint32_t BIN_IMPORT_ADDR = PC_START;
+
+struct Machine {
+    uint32_t regs[32] = {0};
+    uint8_t mem[MEM_SIZE] = {0};
+    uint32_t pc = {0};
+    bool executeClockCycle(){
+         uint32_t instruction = *((uint32_t*)(mem + pc)); // Fetch instruction (4 bytes)
     printf("Fetched instruction: 0x%08X\n", instruction);
     
     int32_t pc_increment = 4;
@@ -57,7 +64,7 @@ bool execute_instruction(uint32_t* regs, uint8_t* mem, uint32_t* pc) {
         case(0x03):{ // I-type loads
             uint32_t address = regs[rs1] + ((int32_t)instruction >> 20);
             uint8_t loadSize = 1 << (funct3 & 0x03);;
-            if(address + loadSize - 1 >= MEM_SIZE){
+            if(address >= MEM_SIZE || (address + loadSize) > MEM_SIZE){
                 printf("ERROR! address exceeds memory size. ");
                 return 0;
             }
@@ -98,7 +105,7 @@ bool execute_instruction(uint32_t* regs, uint8_t* mem, uint32_t* pc) {
             }
             uint32_t address = regs[rs1] + imm;
             uint8_t loadSize = 1 << (funct3 & 0x03);
-            if(address + loadSize - 1 >= MEM_SIZE){
+            if((address + loadSize) > MEM_SIZE || address >= MEM_SIZE){
                 printf("ERROR! address exceeds memory size. ");
                 return 0;
             }
@@ -155,17 +162,17 @@ bool execute_instruction(uint32_t* regs, uint8_t* mem, uint32_t* pc) {
             break;
         }
         case(0x17):{ // U-type AUIPC instruction
-            regs[rd] = (instruction & 0xFFFFF000) + *pc;
+            regs[rd] = (instruction & 0xFFFFF000) + pc;
             break;
         }
         case(0x67):{ // I-type jalr instruction
-            regs[rd] = *pc + 4;
-            *pc = regs[rs1] + (((int32_t)instruction) >> 20) & ~0x01;
+            regs[rd] = pc + 4;
+            pc = (regs[rs1] + (((int32_t)instruction) >> 20)) & ~0x01;
             pc_increment = 0;
             break;
         }
         case(0x6F):{ //J-type jal instruction
-            regs[rd] = *pc + 4;
+            regs[rd] = pc + 4;
             
             int32_t imm = 0;
             imm |= 0;//Hardwired 0 bit
@@ -190,39 +197,40 @@ bool execute_instruction(uint32_t* regs, uint8_t* mem, uint32_t* pc) {
     }
     regs[0] = 0;
     printf("New rd value: %d\n\n", regs[rd]);
-    *pc += pc_increment;
+    pc += pc_increment;
 
-    if(mem[MEMORY_MAPPED_OUTPUT] != 0){
-        printf("\n\n Memory Mapped Output Triggered: ");
-        putchar(mem[MEMORY_MAPPED_OUTPUT]);
-        return false;
-    }
     //Technically buggy on multi-byte fetches, but OK for now.
-    if(*pc >= MEM_SIZE){
-        printf("pc (0x%08X) has exceeded memsize (0x%08X)!", *pc, MEM_SIZE);
+    if(pc >= MEM_SIZE){
+        printf("pc (0x%08X) has exceeded memsize (0x%08X)!", pc, MEM_SIZE);
         return false;
     }
     else return true;
+    }
+};
 
+static void importBinary(char* filename, uint8_t* mem){
+    //Loads a file into memory!
+    FILE* testing_binary = fopen(filename, "rb");
+    if (testing_binary == NULL) {
+        printf("Error: Could not open %s\n", filename);
+        exit(EXIT_FAILURE); // Exit the simulator if the file fails to load
+    }
+    size_t bytes_read = fread(mem + BIN_IMPORT_ADDR, sizeof(uint8_t), MEM_SIZE - BIN_IMPORT_ADDR, testing_binary);
+    printf("Successfully loaded %zu bytes into memory.\nStarting the emulator...\n\n", bytes_read);
+    //I think I need the BIN_IMPORT_ADDR and MEM_SIZE overflow checks, but I'm not sure howto implement this.
 }
 
 int main(){
 
-    printf("Initializing RV32I simulator by Creed Truman...\n");
-    uint32_t regs[32] = {0}; // 32 registers initialized to 0
-    uint8_t mem[MEM_SIZE] = {0}; // 4KB of memory initialized to 0
-    uint32_t pc = 0; // Program counter initialized to 0
-    FILE* testing_binary = fopen("rv_test.bin", "rb");
-    if (testing_binary == NULL) {
-        printf("Error: Could not open rv_test.bin!\n");
-        return 1; // Exit the simulator if the file fails to load
-    }
-    size_t bytes_read = fread(mem, sizeof(uint8_t), MEM_SIZE, testing_binary);
-    printf("Successfully loaded %zu bytes into memory.\n", bytes_read);
+    printf("Initializing RV32I emulator by Creed Truman...\n");
+
+    Machine emulator = {0};
+
+    importBinary("rv_test.bin", emulator.mem);
 
     bool success = true;
     do{
-        success = execute_instruction(regs, mem, &pc);
+        success = emulator.executeClockCycle();
     }while(success);
 
     printf("Exiting RV32I simulator...\n");
