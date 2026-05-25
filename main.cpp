@@ -23,14 +23,44 @@ constexpr uint32_t MEM_SIZE = 4096; // 4KB of memory
 constexpr uint32_t PC_START = 0;
 constexpr uint32_t BIN_IMPORT_ADDR = PC_START;
 
+
+constexpr uint8_t OPCODE_R_ALU = 0x33;
+constexpr uint8_t OPCODE_I_ALU = 0x13;
+constexpr uint8_t OPCODE_I_LOAD   = 0x03;
+constexpr uint8_t OPCODE_S_STORE  = 0x23;
+constexpr uint8_t OPCODE_B_BRANCH = 0x63;
+constexpr uint8_t OPCODE_U_LUI    = 0x37;
+constexpr uint8_t OPCODE_U_AUIPC  = 0x17;
+constexpr uint8_t OPCODE_I_JALR   = 0x67;
+constexpr uint8_t OPCODE_J_JAL    = 0x6F;
+
+struct instruction{
+    uint8_t opcode;
+    uint8_t funct7;
+    uint8_t funct3;
+    uint8_t rs1;
+    uint8_t rs2;
+    uint8_t rd;
+    int32_t imm;
+};
+
 struct Machine {
     uint32_t regs[32] = {0};
     uint8_t mem[MEM_SIZE] = {0};
     uint32_t pc = {0};
     bool debug_mode = false;
-    void executeClockCycle(){
+    uint32_t fetch(){
+        if(pc > MEM_SIZE - 4) dumpProcessorState("PC exceeded memory size");
+        if(pc % 4 != 0) dumpProcessorState("PC is not 4-byte aligned");
+        
         uint32_t instruction = *((uint32_t*)(mem + pc)); // Fetch instruction (4 bytes)
-        printf("Fetched instruction: 0x%08X\n", instruction);
+
+        if(debug_mode) printf("[FETCH]: 0x%08X\n", instruction);
+
+        return instruction;
+    }
+    void executeClockCycle(){
+        uint32_t instruction = fetch();
         
         int32_t pc_increment = 4;
 
@@ -40,12 +70,14 @@ struct Machine {
         uint8_t rs1 =    (instruction >> 15) & 0x0000001F; //Extract bits 15-19
         uint8_t rs2 =    (instruction >> 20) & 0x0000001F; //Extract bits 20-24
         uint8_t rd  =    (instruction >> 7 ) & 0x0000001F; //Extract bits 7-11
-        printf("opcode: 0x%02X\n", opcode);
-        printf("funct7: 0x%02X\n", funct7);
-        printf("funct3: 0x%02X\n", funct3);
-        printf("rs1   : 0x%02X, val: %d\n", rs1   , regs[rs1]);
-        printf("rs2   : 0x%02X, val: %d\n", rs2   , regs[rs2]);
-        printf("rd    : 0x%02X, val: %d\n", rd    , regs[rd ]);
+        if(debug_mode){
+            printf("opcode: 0x%02X\n", opcode);
+            printf("funct7: 0x%02X\n", funct7);
+            printf("funct3: 0x%02X\n", funct3);
+            printf("rs1   : 0x%02X, val: %d\n", rs1   , regs[rs1]);
+            printf("rs2   : 0x%02X, val: %d\n", rs2   , regs[rs2]);
+            printf("rd    : 0x%02X, val: %d\n", rd    , regs[rd ]);
+        }
 
         switch(opcode){
             case(0x33):{ // R-type ALU math
@@ -209,21 +241,30 @@ struct Machine {
                 break;
             }
             default:{
-                printf("Unknown instruction opcode!!!");
-                exit(EXIT_FAILURE); // Invalid instruction
+                dumpProcessorState("Undefined opcode encountered");
             }
         }
+        
         regs[0] = 0;
-        printf("New rd value: %d\n\n", regs[rd]);
         pc += pc_increment;
 
-        //Technically buggy on multi-byte fetches, but OK for now.
-        if(pc >= MEM_SIZE){
-            printf("pc (0x%08X) has exceeded memsize (0x%08X)!", pc, MEM_SIZE);
-            exit(EXIT_FAILURE);
-        }
-        else return;
+        if(debug_mode) printf("New rd value: %d, New PC: %08X\n\n", regs[rd], pc);
+        
     }
+    instruction decode(int32_t encoded){
+        instruction decoded = {0};
+        decoded.opcode = (encoded >> 0 ) & 0x0000007F;//Extract bits 0-6
+        decoded.funct7 = (encoded >> 25) & 0x0000007F; //Extract bits 25-31
+        decoded.funct3 = (encoded >> 12) & 0x00000007; //Extract bits 12-14
+        decoded.rs1    = (encoded >> 15) & 0x0000001F; //Extract bits 15-19
+        decoded.rs2    = (encoded >> 20) & 0x0000001F; //Extract bits 20-24
+        decoded.rd     = (encoded >> 7 ) & 0x0000001F; //Extract bits 7-11
+
+        decoded.imm = 0;
+        switch(decoded.opcode)
+
+        return decoded;
+    };
     void dumpProcessorState(const std::string& reason){
         printf("\n\nDumping processor state...\n\nRegisters:\n");
         printf("reg0 :%08X, reg1 :%08X, reg2 :%08X, reg3 :%08X\n", regs[0 ], regs[1 ], regs[2 ], regs[3 ]);
