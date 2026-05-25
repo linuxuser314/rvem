@@ -52,7 +52,7 @@ bool execute_instruction(uint32_t* regs, uint8_t* mem, uint32_t* pc) {
             else printf("Undefined I-Type Instructions!!!\n\n");
             break;
         }
-        case(0x03):{ // I-type loads
+        case(0x23):{ // S-type stores
             uint32_t address = regs[rs1] + ((int32_t)instruction >> 20);
             uint8_t loadSize = 1 << (funct3 & 0x03);;
             if(address + loadSize - 1 >= MEM_SIZE){
@@ -88,6 +88,34 @@ bool execute_instruction(uint32_t* regs, uint8_t* mem, uint32_t* pc) {
             }
          break;
         }
+            int32_t imm = rd | funct7 << 5;
+            if(imm & 0x00000800){
+                imm |= 0xFFFFF000;
+            }
+            uint32_t address = regs[rs1] + imm;
+            uint8_t loadSize = 1 << (funct3 & 0x03);
+            if(address + loadSize - 1 >= MEM_SIZE){
+                printf("ERROR! address exceeds memory size. ");
+                return 0;
+            }
+            switch(funct3){
+                case(0x00):{
+                    regs[rd] = (mem[address]) | ((uint16_t)mem[address + 1] << 8) | ((uint32_t)mem[address + 2] << 16) | ((uint32_t)mem[address + 3] << 24);
+                    break;
+                }
+                case(0x01):{
+                    regs[rd] = mem[address];
+                    break;
+                }
+                case(0x02):{
+                    regs[rd] = (mem[address]) | ((uint16_t)mem[address + 1] << 8);
+                    break;
+                }
+                default:{
+                    printf("ERROR! Undefined load instruction (funct3 = %02X)", funct3);
+                    break;
+                }
+            }
         default:{
             printf("Unknown instruction opcode!!!");
             return false; // Invalid instruction
@@ -111,8 +139,6 @@ int main(){
     uint32_t regs[32] = {0}; // 32 registers initialized to 0
     uint8_t mem[MEM_SIZE] = {0}; // 4KB of memory initialized to 0
     uint32_t pc = 0; // Program counter initialized to 0
-    regs[1] = 16;
-    regs[2] = 2;
     FILE* testing_binary = fopen("rv_test.bin", "rb");
     if (testing_binary == NULL) {
         printf("Error: Could not open rv_test.bin!\n");
