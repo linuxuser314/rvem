@@ -2,7 +2,7 @@
 #include <stdint.h>
 
 constexpr uint32_t MEM_SIZE = 4096; // 4KB of memory
-
+constexpr uint32_t MEMORY_MAPPED_OUTPUT = 4095;
 bool execute_instruction(uint32_t* regs, uint8_t* mem, uint32_t* pc) {
     uint32_t instruction = *((uint32_t*)(mem + *pc)); // Fetch instruction (4 bytes)
     printf("Fetched instruction: 0x%08X\n", instruction);
@@ -158,6 +158,31 @@ bool execute_instruction(uint32_t* regs, uint8_t* mem, uint32_t* pc) {
             regs[rd] = (instruction & 0xFFFFF000) + *pc;
             break;
         }
+        case(0x67):{ // I-type jalr instruction
+            regs[rd] = *pc + 4;
+            *pc = regs[rs1] + (((int32_t)instruction) >> 20) & ~0x01;
+            pc_increment = 0;
+            break;
+        }
+        case(0x6F):{ //J-type jal instruction
+            regs[rd] = *pc + 4;
+            
+            int32_t imm = 0;
+            imm |= 0;//Hardwired 0 bit
+
+            imm |= ((instruction >> 21) & 0x03FF) << 1 ;//Extract bits 1-10
+            imm |= ((instruction >> 20) & 0x0001) << 11;//Extrat bit 11.
+            imm |= ((instruction >> 12) & 0x00FF) << 12;//Extract bits 12-19
+            imm |= ((instruction >> 31) & 0x0001) << 20;//Extract bit 20
+
+            
+            //Sign extension
+            if(imm & 0x00100000){
+                imm |= 0xFFF00000;
+            }
+            pc_increment = imm;
+            break;
+        }
         default:{
             printf("Unknown instruction opcode!!!");
             return false; // Invalid instruction
@@ -166,6 +191,12 @@ bool execute_instruction(uint32_t* regs, uint8_t* mem, uint32_t* pc) {
     regs[0] = 0;
     printf("New rd value: %d\n\n", regs[rd]);
     *pc += pc_increment;
+
+    if(mem[MEMORY_MAPPED_OUTPUT] != 0){
+        printf("\n\n Memory Mapped Output Triggered: ");
+        putchar(mem[MEMORY_MAPPED_OUTPUT]);
+        return false;
+    }
     //Technically buggy on multi-byte fetches, but OK for now.
     if(*pc >= MEM_SIZE){
         printf("pc (0x%08X) has exceeded memsize (0x%08X)!", *pc, MEM_SIZE);
