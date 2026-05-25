@@ -78,17 +78,22 @@ struct Machine {
 
         return instruction;
     }
-    uint32_t ALU(uint32_t operand1, uint32_t operand2, uint8_t funct3, uint8_t funct7, instructionType type){
-                if(funct3 == 0x00 && funct7 == 0x00) return operand1 + operand2;
-                else if(funct3 == 0x01 && funct7 == 0x00) return operand1 << (operand2 & 0x0000001F);
-                else if(funct3 == 0x02 && funct7 == 0x00) return ((int32_t)operand1) < ((int32_t)operand2);
-                else if(funct3 == 0x03 && funct7 == 0x00) return operand1 < operand2;
-                else if(funct3 == 0x04 && funct7 == 0x00) return operand1 ^ operand2;
-                else if(funct3 == 0x05 && (funct7 == 0x00 || type == I_TYPE)) return operand1 >> (operand2 & 0x0000001F);
-                else if(funct3 == 0x05 && funct7 == 0x20) return ((int32_t)operand1) >> (operand2 & 0x0000001F);
-                else if(funct3 == 0x06 && (funct7 == 0x00 || type == I_TYPE)) return operand1 | operand2;
-                else if(funct3 == 0x07 && (funct7 == 0x00 || type == I_TYPE)) return operand1 & operand2;
-                else dumpProcessorState("Undefined ALU instruction!!!");
+    uint32_t ALU(uint32_t operand1, uint32_t operand2, uint8_t funct3, uint8_t funct7, bool isPicky){
+        // This function executes ALU operations for both R-type and I-type instructions.
+        // The isPicky flag is set to true for R-type instructions to strictly enforce funct7 compliance.
+        // (I-type instructions ignore funct7, except for shifts which natively match).
+        
+        if      (funct3 == 0x00 && (!isPicky || funct7 == 0x00)) return operand1 + operand2;
+        else if (funct3 == 0x00 && ( isPicky && funct7 == 0x20)) return operand1 - operand2;
+        else if (funct3 == 0x01 && (            funct7 == 0x00)) return operand1 << (operand2 & 0x1F);
+        else if (funct3 == 0x02 && (!isPicky || funct7 == 0x00)) return ((int32_t)operand1) < ((int32_t)operand2);
+        else if (funct3 == 0x03 && (!isPicky || funct7 == 0x00)) return operand1 < operand2;
+        else if (funct3 == 0x04 && (!isPicky || funct7 == 0x00)) return operand1 ^ operand2;
+        else if (funct3 == 0x05 && (            funct7 == 0x00)) return operand1 >> (operand2 & 0x1F);
+        else if (funct3 == 0x05 && (            funct7 == 0x20)) return ((int32_t)operand1) >> (operand2 & 0x1F);
+        else if (funct3 == 0x06 && (!isPicky || funct7 == 0x00)) return operand1 | operand2;
+        else if (funct3 == 0x07 && (!isPicky || funct7 == 0x00)) return operand1 & operand2;
+        else dumpProcessorState("Undefined ALU instruction!!!");
     }
     void executeClockCycle(){
         uint32_t instruction = fetch();
