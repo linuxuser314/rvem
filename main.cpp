@@ -3,16 +3,21 @@
 *Add overflow-checking logic to importBinary
 *Clean up executeClockCycle and make it more hardware-accurate
 *Eliminate magic numbers in opcodes and such
-*Incorporate debug mode via a CLI flag
+*Make it auto-import a binary with a filename that can be passed in via arguments, not that is hardcoded to rv_test.bin
+*
 *
 *Add a header
 *Add a readme
 *Add a src, include, gitignore, and some sort of makefile
 */
 
-#include <stdio.h>
-#include <stdint.h>
-#include <stdlib.h>
+#include <cstdio>
+#include <cstdint>
+#include <cstdlib>
+#include <cstring>
+#include <iostream>
+#include <string>
+#include <vector>
 
 constexpr uint32_t MEM_SIZE = 4096; // 4KB of memory
 constexpr uint32_t PC_START = 0;
@@ -22,6 +27,7 @@ struct Machine {
     uint32_t regs[32] = {0};
     uint8_t mem[MEM_SIZE] = {0};
     uint32_t pc = {0};
+    bool debug_mode = false;
     void executeClockCycle(){
         uint32_t instruction = *((uint32_t*)(mem + pc)); // Fetch instruction (4 bytes)
         printf("Fetched instruction: 0x%08X\n", instruction);
@@ -218,13 +224,30 @@ struct Machine {
         }
         else return;
     }
+    void dumpProcessorState(const std::string& reason){
+        printf("\n\nDumping processor state...\n\nRegisters:\n");
+        printf("reg0 :%08X, reg1 :%08X, reg2 :%08X, reg3 :%08X\n", regs[0 ], regs[1 ], regs[2 ], regs[3 ]);
+        printf("reg4 :%08X, reg5 :%08X, reg6 :%08X, reg7 :%08X\n", regs[4 ], regs[5 ], regs[6 ], regs[7 ]);
+        printf("reg8 :%08X, reg9 :%08X, reg10:%08X, reg11:%08X\n", regs[8 ], regs[9 ], regs[10], regs[11]);
+        printf("reg12:%08X, reg13:%08X, reg14:%08X, reg15:%08X\n", regs[12], regs[13], regs[14], regs[15]);
+        printf("reg16:%08X, reg17:%08X, reg18:%08X, reg19:%08X\n", regs[16], regs[17], regs[18], regs[19]);
+        printf("reg20:%08X, reg21:%08X, reg22:%08X, reg23:%08X\n", regs[20], regs[21], regs[22], regs[23]);
+        printf("reg24:%08X, reg25:%08X, reg26:%08X, reg27:%08X\n", regs[24], regs[25], regs[26], regs[27]);
+        printf("reg28:%08X, reg29:%08X, reg30:%08X, reg31:%08X\n", regs[28], regs[29], regs[30], regs[31]);
+        
+        printf("\nProgram Counter: %08X\n", pc);
+
+        printf("\nReason for dump: %s\n\n", reason.c_str());
+        printf("End of processor state dump.\n\n");
+        exit(EXIT_FAILURE);
+    }
 };
 
-static void importBinary(char* filename, uint8_t* mem){
+static void importBinary(const std::string& filename, uint8_t* mem){
     //Loads a file into memory!
-    FILE* testing_binary = fopen(filename, "rb");
+    FILE* testing_binary = fopen(filename.c_str(), "rb");
     if (testing_binary == NULL) {
-        printf("Error: Could not open %s\n", filename);
+        printf("Error: Could not open %s\n", filename.c_str());
         exit(EXIT_FAILURE); // Exit the simulator if the file fails to load
     }
     size_t bytes_read = fread(mem + BIN_IMPORT_ADDR, sizeof(uint8_t), MEM_SIZE - BIN_IMPORT_ADDR, testing_binary);
@@ -232,7 +255,7 @@ static void importBinary(char* filename, uint8_t* mem){
     //I should probaly make this function check to make sure it doesn't overflow memory...    
 }
 
-int main(){
+int main(int argc, char* argv[]){
 
     printf("Initializing RV32I emulator by Creed Truman...\n");
     if(PC_START %2 != 0){
@@ -241,6 +264,12 @@ int main(){
     }
 
     Machine emulator;
+
+    if(argc > 1){
+        if(std::string(argv[1]) == "-debug" || std::string(argv[1]) == "-d"){
+            emulator.debug_mode = true;
+        }
+    }
 
     importBinary("rv_test.bin", emulator.mem);
 
