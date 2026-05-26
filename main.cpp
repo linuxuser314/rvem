@@ -2,6 +2,8 @@
 *TODO:
 *Add overflow-checking logic to importBinary
 *Make it auto-import a binary with a filename that can be passed in via arguments, not that is hardcoded to rv_test.bin
+*Split up Machine into a class and multiple files to make it more manageable and standard
+*Implement some sort of memory bus and MMIO systems to allow for peripherals and UART output (at the very least).
 *
 *
 *Add a header
@@ -31,7 +33,7 @@ constexpr uint8_t OPCODE_U_AUIPC  = 0x17;
 constexpr uint8_t OPCODE_I_JALR   = 0x67;
 constexpr uint8_t OPCODE_J_JAL    = 0x6F;
 
-struct decodedInstruction{
+struct DecodedInstruction{
     uint8_t opcode;
     uint8_t funct7;
     uint8_t funct3;
@@ -46,13 +48,13 @@ int32_t signExtendImmediate(uint32_t value, uint8_t MSB){
     //Then we have to make everything below the MSB into 1s.
     //To do that, we shift 1 over MSB times and subtract 1 to create 00011111....
     //Then we negate that and OR it to mask the first bits as 1s.
-    if(value & (1 << MSB)){
-        return value | ~((1 << (MSB + 1))-1);
+    if (value & (1U << MSB)){
+        return value | ~((1U << (MSB + 1))-1);
     }
     return value;
 }
 
-enum instructionType{
+enum InstructionType{
     R_TYPE,
     I_TYPE,
     S_TYPE,
@@ -66,13 +68,14 @@ struct Machine {
     uint8_t mem[MEM_SIZE] = {0};
     uint32_t pc = {0};
     bool debug_mode = false;
-    uint32_t fetch(){
-        if(pc > MEM_SIZE - 4) dumpProcessorState("PC exceeded memory size");
-        if(pc % 4 != 0) dumpProcessorState("PC is not 4-byte aligned");
-        
-        uint32_t instruction = *((uint32_t*)(mem + pc)); // Fetch instruction (4 bytes)
 
-        if(debug_mode) printf("[FETCH]: 0x%08X\n", instruction);
+    uint32_t fetch(){
+        if (pc > MEM_SIZE - 4) dumpProcessorState("PC exceeded memory size");
+        if (pc % 4 != 0) dumpProcessorState("PC is not 4-byte aligned");
+        
+        uint32_t instruction;
+        std::memcpy(&instruction, mem + pc, sizeof(uint32_t));
+        if (debug_mode) printf("[FETCH]: 0x%08X\n", instruction);
 
         return instruction;
     }
@@ -95,9 +98,9 @@ struct Machine {
     }
     void executeClockCycle(){
         uint32_t instruction = fetch();
-        decodedInstruction decoded = decode(instruction);
+        DecodedInstruction decoded = decode(instruction);
         int32_t pc_increment = 4;
-        if(debug_mode){
+        if (debug_mode){
             printf("opcode: 0x%02X\n", decoded.opcode);
             printf("funct7: 0x%02X\n", decoded.funct7);
             printf("funct3: 0x%02X\n", decoded.funct3);
@@ -110,11 +113,11 @@ struct Machine {
         regs[0] = 0;
         pc += pc_increment;
 
-        if(debug_mode) printf("New rd value: %d, New PC: %08X\n\n", regs[decoded.rd], pc);
+        if (debug_mode) printf("New rd value: %d, New PC: %08X\n\n", regs[decoded.rd], pc);
         
     }
-    decodedInstruction decode(uint32_t encoded){
-        decodedInstruction decoded = {0};
+    DecodedInstruction decode(uint32_t encoded){
+        DecodedInstruction decoded = {0};
         decoded.opcode = (encoded >> 0 ) & 0x0000007F;//Extract bits 0-6
         decoded.funct7 = (encoded >> 25) & 0x0000007F; //Extract bits 25-31
         decoded.funct3 = (encoded >> 12) & 0x00000007; //Extract bits 12-14
@@ -178,7 +181,7 @@ struct Machine {
         printf("End of processor state dump.\n\n");
         exit(EXIT_FAILURE);
     }
-    int32_t execute(decodedInstruction decoded){
+    int32_t execute(DecodedInstruction decoded){
         int32_t pc_increment = 4;
         switch(decoded.opcode){
             case(OPCODE_R_ALU):{ // R-type ALU math
@@ -191,8 +194,8 @@ struct Machine {
             }
             case(OPCODE_I_LOAD):{ // I-type loads
                 uint32_t address = regs[decoded.rs1] + decoded.imm;
-                uint8_t loadSize = 1 << (decoded.funct3 & 0x03);;
-                if(address >= MEM_SIZE || (address + loadSize) > MEM_SIZE){
+                uint8_t loadSize = 1 << (decoded.funct3 & 0x03);
+                if (address >= MEM_SIZE || MEM_SIZE - address < loadSize){
                     printf("ERROR! address exceeds memory size. ");
                     exit(EXIT_FAILURE);
                 }
@@ -230,7 +233,7 @@ struct Machine {
                 int32_t imm = decoded.imm;
                 uint32_t address = regs[decoded.rs1] + imm;
                 uint8_t loadSize = 1 << (decoded.funct3 & 0x03);
-                if((address + loadSize) > MEM_SIZE || address >= MEM_SIZE){
+                if ((address + loadSize) > MEM_SIZE || address >= MEM_SIZE){
                     printf("ERROR! address exceeds memory size. ");
                     exit(EXIT_FAILURE);
                 }
@@ -267,7 +270,7 @@ struct Machine {
                 isBranching |= decoded.funct3 == 0x5 && (int32_t)regs[decoded.rs1] >= (int32_t)regs[decoded.rs2];
                 isBranching |= decoded.funct3 == 0x6 && regs[decoded.rs1] <  regs[decoded.rs2];
                 isBranching |= decoded.funct3 == 0x7 && regs[decoded.rs1] >= regs[decoded.rs2];
-                if(isBranching) pc_increment = decoded.imm;
+                if (isBranching) pc_increment = decoded.imm;
                 break;
 
             }
@@ -315,15 +318,15 @@ static void importBinary(const std::string& filename, uint8_t* mem){
 int main(int argc, char* argv[]){
 
     printf("Initializing RV32I emulator by Creed Truman...\n");
-    if(PC_START %2 != 0){
+    if (PC_START %2 != 0){
         printf("ERROR! PC_START is not 2-byte aligned.");
         exit(EXIT_FAILURE);
     }
 
     Machine emulator;
 
-    if(argc > 1){
-        if(std::string(argv[1]) == "-debug" || std::string(argv[1]) == "-d"){
+    if (argc > 1){
+        if (std::string(argv[1]) == "-debug" || std::string(argv[1]) == "-d"){
             emulator.debug_mode = true;
         }
     }
