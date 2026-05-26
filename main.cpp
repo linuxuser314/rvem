@@ -1,8 +1,6 @@
 /*
 *TODO:
 *Add overflow-checking logic to importBinary
-*Clean up executeClockCycle and make it more hardware-accurate
-*Eliminate magic numbers in opcodes and such
 *Make it auto-import a binary with a filename that can be passed in via arguments, not that is hardcoded to rv_test.bin
 *
 *
@@ -107,148 +105,8 @@ struct Machine {
             printf("rs2   : 0x%02X, val: %d\n", decoded.rs2   , regs[decoded.rs2]);
             printf("rd    : 0x%02X, val: %d\n", decoded.rd    , regs[decoded.rd ]);
         }
-
-        switch(decoded.opcode){
-            case(0x33):{ // R-type ALU math
-                printf("R-type instruction\n");
-                    if(decoded.funct3 == 0x00 && decoded.funct7 == 0x00) regs[decoded.rd] = regs[decoded.rs1] + regs[decoded.rs2];
-                else if(decoded.funct3 == 0x00 && decoded.funct7 == 0x20) regs[decoded.rd] = regs[decoded.rs1] - regs[decoded.rs2];
-                else if(decoded.funct3 == 0x01 && decoded.funct7 == 0x00) regs[decoded.rd] = regs[decoded.rs1] << (regs[decoded.rs2] & 0x0000001F);
-                else if(decoded.funct3 == 0x02 && decoded.funct7 == 0x00) regs[decoded.rd] = ((int32_t)regs[decoded.rs1]) < ((int32_t)regs[decoded.rs2]);
-                else if(decoded.funct3 == 0x03 && decoded.funct7 == 0x00) regs[decoded.rd] = regs[decoded.rs1] < regs[decoded.rs2];
-                else if(decoded.funct3 == 0x04 && decoded.funct7 == 0x00) regs[decoded.rd] = regs[decoded.rs1] ^ regs[decoded.rs2];
-                else if(decoded.funct3 == 0x05 && decoded.funct7 == 0x00) regs[decoded.rd] = regs[decoded.rs1] >> (regs[decoded.rs2] & 0x0000001F);
-                else if(decoded.funct3 == 0x05 && decoded.funct7 == 0x20) regs[decoded.rd] = ((int32_t)regs[decoded.rs1]) >> (regs[decoded.rs2] & 0x0000001F);
-                else if(decoded.funct3 == 0x06 && decoded.funct7 == 0x00) regs[decoded.rd] = regs[decoded.rs1] | regs[decoded.rs2];
-                else if(decoded.funct3 == 0x07 && decoded.funct7 == 0x00) regs[decoded.rd] = regs[decoded.rs1] & regs[decoded.rs2];
-                else printf("Undefined R-Type Instructions!!!\n\n");
-                break;
-            }
-            case(0x13):{ // I-type ALU math
-                printf("I-type instruction\n");
-                    int32_t seimm = ((int32_t)instruction) >> 20;
-                    uint32_t uimm  = seimm;
-                    if(decoded.funct3 == 0x00                  ) regs[decoded.rd] = regs[decoded.rs1] + seimm;
-                else if(decoded.funct3 == 0x01 && decoded.funct7 == 0x00) regs[decoded.rd] = regs[decoded.rs1] << (regs[decoded.rs2] & 0x0000001F);
-                else if(decoded.funct3 == 0x02                  ) regs[decoded.rd] = ((int32_t)regs[decoded.rs1]) < seimm;
-                else if(decoded.funct3 == 0x03                  ) regs[decoded.rd] = regs[decoded.rs1] < uimm;
-                else if(decoded.funct3 == 0x04                  ) regs[decoded.rd] = regs[decoded.rs1] ^ seimm;
-                else if(decoded.funct3 == 0x05 && decoded.funct7 == 0x00) regs[decoded.rd] = regs[decoded.rs1] >> (regs[decoded.rs2] & 0x0000001F);
-                else if(decoded.funct3 == 0x05 && decoded.funct7 == 0x20) regs[decoded.rd] = ((int32_t)regs[decoded.rs1]) >> (regs[decoded.rs2] & 0x0000001F);
-                else if(decoded.funct3 == 0x06                  ) regs[decoded.rd] = regs[decoded.rs1] | seimm;
-                else if(decoded.funct3 == 0x07                  ) regs[decoded.rd] = regs[decoded.rs1] & seimm;
-                else printf("Undefined I-Type Instructions!!!\n\n");
-                break;
-            }
-            case(0x03):{ // I-type loads
-                uint32_t address = regs[decoded.rs1] + decoded.imm;
-                uint8_t loadSize = 1 << (decoded.funct3 & 0x03);;
-                if(address >= MEM_SIZE || (address + loadSize) > MEM_SIZE){
-                    printf("ERROR! address exceeds memory size. ");
-                    exit(EXIT_FAILURE);
-                }
-                switch(decoded.funct3){
-                    case(0x00):{
-                        regs[decoded.rd] = (int8_t)mem[address];
-                        break;
-                    }
-                    case(0x01):{
-                        regs[decoded.rd] = (int16_t)((mem[address]) | ((uint16_t)mem[address + 1] << 8));
-                        break;
-                    }
-                    case(0x02):{
-                        regs[decoded.rd] = (mem[address]) | ((uint16_t)mem[address + 1] << 8) | ((uint32_t)mem[address + 2] << 16) | ((uint32_t)mem[address + 3] << 24);
-                        break;
-                    }
-                    case(0x04):{
-                        regs[decoded.rd] = mem[address];
-                        break;
-                    }
-                    case(0x05):{
-                        regs[decoded.rd] = (mem[address]) | ((uint16_t)mem[address + 1] << 8);
-                        break;
-                    }
-                    default:{
-                        printf("ERROR! Undefined load instruction (funct3 = %02X)", decoded.funct3);
-                        break;
-                    }
-            
-                }
-            break;
-            }
-            case(0x23):{ // S-type stores
-                printf("Store instruction!");
-                int32_t imm = decoded.rd | decoded.funct7 << 5;
-                if(imm & 0x00000800){
-                    imm |= 0xFFFFF000;//Manual sign extension (better than typecasting!)
-                }
-                uint32_t address = regs[decoded.rs1] + imm;
-                uint8_t loadSize = 1 << (decoded.funct3 & 0x03);
-                if((address + loadSize) > MEM_SIZE || address >= MEM_SIZE){
-                    printf("ERROR! address exceeds memory size. ");
-                    exit(EXIT_FAILURE);
-                }
-
-                switch(decoded.funct3){
-                    case(0x00):{
-                        mem[address] = regs[decoded.rs2] & 0xFF;
-                        break;
-                    }
-                    case(0x01):{
-                        mem[address    ] = (regs[decoded.rs2] >> 0) & 0xFF;
-                        mem[address + 1] = (regs[decoded.rs2] >> 8) & 0xFF;
-                        break;
-                    }
-                    case(0x02):{
-                        mem[address    ] = (regs[decoded.rs2] >> 0 ) & 0xFF;
-                        mem[address + 1] = (regs[decoded.rs2] >> 8 ) & 0xFF;
-                        mem[address + 2] = (regs[decoded.rs2] >> 16) & 0xFF;
-                        mem[address + 3] = (regs[decoded.rs2] >> 24) & 0xFF;
-                        break;
-                    }
-                    default:{
-                        printf("ERROR! Undefined store instruction (funct3 = %02X)", decoded.funct3);
-                        break;
-                    }
-                }
-                break;
-            }
-            case(0x63):{ // B-type branches
-                bool isBranching = false;
-                isBranching |= decoded.funct3 == 0x0 && regs[decoded.rs1] == regs[decoded.rs2];
-                isBranching |= decoded.funct3 == 0x1 && regs[decoded.rs1] != regs[decoded.rs2];
-                isBranching |= decoded.funct3 == 0x4 && (int32_t)regs[decoded.rs1] <  (int32_t)regs[decoded.rs2];
-                isBranching |= decoded.funct3 == 0x5 && (int32_t)regs[decoded.rs1] >= (int32_t)regs[decoded.rs2];
-                isBranching |= decoded.funct3 == 0x6 && regs[decoded.rs1] <  regs[decoded.rs2];
-                isBranching |= decoded.funct3 == 0x7 && regs[decoded.rs1] >= regs[decoded.rs2];
-                if(isBranching) pc_increment = decoded.imm;
-                break;
-
-            }
-            case(0x37):{ // U-type LUI instruction
-                regs[decoded.rd] = decoded.imm;
-                break;
-            }
-            case(0x17):{ // U-type AUIPC instruction
-                regs[decoded.rd] = decoded.imm + pc;
-                break;
-            }
-            case(0x67):{ // I-type jalr instruction
-                regs[decoded.rd] = pc + 4;
-                pc = (regs[decoded.rs1] + decoded.imm) & ~0x01;
-                pc_increment = 0;
-                break;
-            }
-            case(0x6F):{ //J-type jal instruction
-                regs[decoded.rd] = pc + 4;
-                pc_increment = decoded.imm;
-                break;
-            }
-            default:{
-                dumpProcessorState("Undefined opcode encountered");
-            }
-        }
-        
+       
+        pc_increment = execute(decoded);
         regs[0] = 0;
         pc += pc_increment;
 
@@ -303,7 +161,7 @@ struct Machine {
         }
         return decoded;
     };
-    void dumpProcessorState(const std::string& reason){
+    [[noreturn]] void dumpProcessorState(const std::string& reason){
         printf("\n\nDumping processor state...\n\nRegisters:\n");
         printf("reg0 :%08X, reg1 :%08X, reg2 :%08X, reg3 :%08X\n", regs[0 ], regs[1 ], regs[2 ], regs[3 ]);
         printf("reg4 :%08X, reg5 :%08X, reg6 :%08X, reg7 :%08X\n", regs[4 ], regs[5 ], regs[6 ], regs[7 ]);
@@ -320,6 +178,126 @@ struct Machine {
         printf("End of processor state dump.\n\n");
         exit(EXIT_FAILURE);
     }
+    int32_t execute(decodedInstruction decoded){
+        int32_t pc_increment = 4;
+        switch(decoded.opcode){
+            case(OPCODE_R_ALU):{ // R-type ALU math
+                regs[decoded.rd] = ALU(regs[decoded.rs1], regs[decoded.rs2], decoded.funct3, decoded.funct7, true);
+                break;
+            }
+            case(OPCODE_I_ALU):{ // I-type ALU math
+                regs[decoded.rd] = ALU(regs[decoded.rs1], decoded.imm, decoded.funct3, decoded.funct7, false);
+                break;
+            }
+            case(OPCODE_I_LOAD):{ // I-type loads
+                uint32_t address = regs[decoded.rs1] + decoded.imm;
+                uint8_t loadSize = 1 << (decoded.funct3 & 0x03);;
+                if(address >= MEM_SIZE || (address + loadSize) > MEM_SIZE){
+                    printf("ERROR! address exceeds memory size. ");
+                    exit(EXIT_FAILURE);
+                }
+                switch(decoded.funct3){
+                    case(0x00):{
+                        regs[decoded.rd] = (int8_t)mem[address];
+                        break;
+                    }
+                    case(0x01):{
+                        regs[decoded.rd] = (int16_t)((mem[address]) | ((uint16_t)mem[address + 1] << 8));
+                        break;
+                    }
+                    case(0x02):{
+                        regs[decoded.rd] = (mem[address]) | ((uint16_t)mem[address + 1] << 8) | ((uint32_t)mem[address + 2] << 16) | ((uint32_t)mem[address + 3] << 24);
+                        break;
+                    }
+                    case(0x04):{
+                        regs[decoded.rd] = mem[address];
+                        break;
+                    }
+                    case(0x05):{
+                        regs[decoded.rd] = (mem[address]) | ((uint16_t)mem[address + 1] << 8);
+                        break;
+                    }
+                    default:{
+                        printf("ERROR! Undefined load instruction (funct3 = %02X)", decoded.funct3);
+                        break;
+                    }
+            
+                }
+            break;
+            }
+            case(OPCODE_S_STORE):{ // S-type stores
+                printf("Store instruction!");
+                int32_t imm = decoded.imm;
+                uint32_t address = regs[decoded.rs1] + imm;
+                uint8_t loadSize = 1 << (decoded.funct3 & 0x03);
+                if((address + loadSize) > MEM_SIZE || address >= MEM_SIZE){
+                    printf("ERROR! address exceeds memory size. ");
+                    exit(EXIT_FAILURE);
+                }
+
+                switch(decoded.funct3){
+                    case(0x00):{
+                        mem[address] = regs[decoded.rs2] & 0xFF;
+                        break;
+                    }
+                    case(0x01):{
+                        mem[address    ] = (regs[decoded.rs2] >> 0) & 0xFF;
+                        mem[address + 1] = (regs[decoded.rs2] >> 8) & 0xFF;
+                        break;
+                    }
+                    case(0x02):{
+                        mem[address    ] = (regs[decoded.rs2] >> 0 ) & 0xFF;
+                        mem[address + 1] = (regs[decoded.rs2] >> 8 ) & 0xFF;
+                        mem[address + 2] = (regs[decoded.rs2] >> 16) & 0xFF;
+                        mem[address + 3] = (regs[decoded.rs2] >> 24) & 0xFF;
+                        break;
+                    }
+                    default:{
+                        printf("ERROR! Undefined store instruction (funct3 = %02X)", decoded.funct3);
+                        break;
+                    }
+                }
+                break;
+            }
+            case(OPCODE_B_BRANCH):{ // B-type branches
+                bool isBranching = false;
+                isBranching |= decoded.funct3 == 0x0 && regs[decoded.rs1] == regs[decoded.rs2];
+                isBranching |= decoded.funct3 == 0x1 && regs[decoded.rs1] != regs[decoded.rs2];
+                isBranching |= decoded.funct3 == 0x4 && (int32_t)regs[decoded.rs1] <  (int32_t)regs[decoded.rs2];
+                isBranching |= decoded.funct3 == 0x5 && (int32_t)regs[decoded.rs1] >= (int32_t)regs[decoded.rs2];
+                isBranching |= decoded.funct3 == 0x6 && regs[decoded.rs1] <  regs[decoded.rs2];
+                isBranching |= decoded.funct3 == 0x7 && regs[decoded.rs1] >= regs[decoded.rs2];
+                if(isBranching) pc_increment = decoded.imm;
+                break;
+
+            }
+            case(OPCODE_U_LUI):{ // U-type LUI instruction
+                regs[decoded.rd] = decoded.imm;
+                break;
+            }
+            case(OPCODE_U_AUIPC):{ // U-type AUIPC instruction
+                regs[decoded.rd] = decoded.imm + pc;
+                break;
+            }
+            case(OPCODE_I_JALR):{ // I-type jalr instruction
+                regs[decoded.rd] = pc + 4;
+                pc = (regs[decoded.rs1] + decoded.imm) & ~0x01;
+                pc_increment = 0;
+                break;
+            }
+            case(OPCODE_J_JAL):{ // J-type jal instruction
+                regs[decoded.rd] = pc + 4;
+                pc_increment = decoded.imm;
+                break;
+            }
+            default:{
+                dumpProcessorState("Undefined opcode encountered");
+            }
+        }
+        return pc_increment;
+        
+    }
+
 };
 
 static void importBinary(const std::string& filename, uint8_t* mem){
