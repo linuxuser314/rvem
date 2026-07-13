@@ -1,15 +1,3 @@
-/*
-*TODO:
-*Add overflow-checking logic to importBinary
-*Make it auto-import a binary with a filename that can be passed in via arguments, not that is hardcoded to rv_test.bin
-*Split up Machine into a class and multiple files to make it more manageable and standard
-*Implement some sort of memory bus and MMIO systems to allow for peripherals and UART output (at the very least).
-*
-*
-*Add a header
-*Add a readme
-*Add a src, include, gitignore, and some sort of makefile
-*/
 
 #include <cstdio>
 #include <cstdint>
